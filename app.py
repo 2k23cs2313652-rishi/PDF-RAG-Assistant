@@ -6,12 +6,12 @@ from datetime import datetime
 import streamlit as st
 from dotenv import load_dotenv
 
-from langchain_community.document_loaders import PyMuPDFLoader
+from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.vectorstores import Chroma
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_mistralai import ChatMistralAI
+from langchain_chroma import Chroma
+from langchain_mistralai import ChatMistralAI, MistralAIEmbeddings
 from langchain_core.prompts import ChatPromptTemplate
+import pymupdf
 
 load_dotenv()
 
@@ -34,7 +34,7 @@ st.set_page_config(
 
 @st.cache_resource
 def get_embeddings():
-    return HuggingFaceEmbeddings(model_name="BAAI/bge-small-en-v1.5")
+    return MistralAIEmbeddings(model="mistral-embed")
 
 
 @st.cache_resource
@@ -115,11 +115,15 @@ def process_pdfs(uploaded_files):
             with open(pdf_path, "wb") as f:
                 f.write(file_bytes)
 
-            loader = PyMuPDFLoader(pdf_path)
-            docs = loader.load()
-
-            for d in docs:
-                d.metadata["source"] = uploaded_file.name
+            docs = []
+            with pymupdf.open(pdf_path) as pdf_doc:
+                for page_num, page in enumerate(pdf_doc):
+                    text = page.get_text()
+                    if text.strip():
+                        docs.append(Document(
+                            page_content=text,
+                            metadata={"source": uploaded_file.name, "page": page_num}
+                        ))
 
             splitter = RecursiveCharacterTextSplitter(
                 chunk_size=1500,
